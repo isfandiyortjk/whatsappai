@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: assistant-doner-home
+    env: node
+    plan: free
+    buildCommand: "npm install"
+    startCommand: "npm start"
+    autoDeploy: true
+    envVars:
+      - key: OPENAI_KEY
+        sync: false
+      - key: META_VERIFY_TOKEN
+        sync: false
+      - key: META_WA_TOKEN
+        sync: false
+      - key: META_PHONE_NUMBER_ID
+        sync: false
+      - key: ADMIN_PHONE
+        sync: false
+      - key: STAFF_PHONES
+        sync: false
+      - key: PORT
+        value: "3000"

@@ -1,0 +1,139 @@
+import axios from "axios";
+import { aiAnswer } from "./ai.js";
+import { buildReplyForRole } from "./templates.js";
+
+const META_BASE = "https://graph.facebook.com/v20.0";
+
+// Environment
+const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN;
+const WA_TOKEN = process.env.META_WA_TOKEN;
+const PHONE_NUMBER_ID = process.env.META_PHONE_NUMBER_ID;
+
+// Business logic: roles
+const ADMIN_PHONE = (process.env.ADMIN_PHONE || "").replace(/\D/g, ""); // digits only
+const STAFF_WHITELIST = (process.env.STAFF_PHONES || "").split(",").map(s => s.replace(/\D/g, "")).filter(Boolean);
+
+// Simple in-memory store (for demo). Replace with DB/Sheets later.
+const store = {
+  shifts: {}, // {phone: {status: "on|off", startAt, endAt}}
+  reports: [] // {phone, ts, text}
+};
+
+export function verifyWebhook(req, res) {
+  try {
+    const verifyToken = req.query["hub.verify_token"];
+    const challenge = req.query["hub.challenge"];
+    if (verifyToken === VERIFY_TOKEN) return res.status(200).send(challenge);
+    return res.sendStatus(403);
+  } catch (e) {
+    return res.sendStatus(500);
+  }
+}
+
+function senderInfo(body) {
+  const change = body?.entry?.[0]?.changes?.[0]?.value;
+  const msg = change?.messages?.[0];
+  const phone = (msg?.from || "").replace(/\D/g, "");
+  const name = change?.contacts?.[0]?.profile?.name || "Сотрудник";
+  const text = msg?.text?.body || "";
+  return { msg, phone, name, text };
+}
+
+export async function handleIncoming(req, res) {
+  res.sendStatus(200); // ACK early
+  try {
+    const { msg, phone, name, text } = senderInfo(req.body);
+    if (!msg || !phone) return;
+
+    const role = phone === ADMIN_PHONE ? "manager" : "staff";
+    const isKnownStaff = STAFF_WHITELIST.includes(phone) || role === "manager";
+
+    if (!isKnownStaff) {
+      await sendText(phone, "❗️Доступ ограничен. Сообщите номер руководителю для добавления в список сотрудников.");
+      return;
+    }
+
+    // Command parsing
+    const t = text.trim().toLowerCase();
+
+    if (role === "staff") {
+      if (/(смена старт|приш[её]л|начал)/.test(t)) {
+        store.shifts[phone] = { status: "on", startAt: new Date().toISOString() };
+        await sendText(phone, "✅ Смена начата. Хорошей работы!");
+        return;
+      }
+      if (/(смена стоп|уш[её]л|закончил|конец смены)/.test(t)) {
+        const rec = store.shifts[phone] || {};
+        rec.status = "off";
+        rec.endAt = new Date().toISOString();
+        store.shifts[phone] = rec;
+        await sendText(phone, "🕘 Смена завершена. Не забудь отправить отчёт: 'отчёт: ...' и 'питание: ...'");
+        return;
+      }
+      if (/^отч[её]т[:\-]/.test(t)) {
+        store.reports.push({ phone, ts: new Date().toISOString(), text });
+        await sendText(phone, "📝 Отчёт сохранён. Спасибо!");
+        return;
+      }
+      if (/^питание[:\-]/.test(t)) {
+        store.reports.push({ phone, ts: new Date().toISOString(), text });
+        await sendText(phone, "🍽️ Питание записано. Спасибо!");
+        return;
+      }
+      if (/статус/.test(t)) {
+        const rec = store.shifts[phone] || {};
+        await sendText(phone, `📊 Статус: ${rec.status || "не на смене"}`);
+        return;
+      }
+    }
+
+    if (role === "manager") {
+      if (/^рассылка[:\-]/.test(t)) {
+        const payload = text.split(/[:\-]/).slice(1).join(":").trim();
+        await broadcastToStaff(payload || "Сообщение от руководителя.");
+        await sendText(phone, "📣 Рассылка отправлена всем сотрудникам из списка.");
+        return;
+      }
+      if (/^статистика/.test(t)) {
+        const on = Object.values(store.shifts).filter(s => s.status === "on").length;
+        await sendText(phone, `📈 На смене сейчас: ${on}. Всего отчётов за сегодня: ${store.reports.length}.`);
+        return;
+      }
+      if (/^добавить[:\-]/.test(t)) {
+        const newPhone = text.match(/\d{7,}/)?.[0];
+        if (newPhone && !STAFF_WHITELIST.includes(newPhone)) {
+          STAFF_WHITELIST.push(newPhone);
+          await sendText(phone, `✅ Добавлен сотрудник: +${newPhone}`);
+        } else {
+          await sendText(phone, "⚠️ Укажи номер вида: 'добавить: +491234567890'");
+        }
+        return;
+      }
+    }
+
+    // Fallback to AI with role-aware system prompt
+    const system = buildReplyForRole(role);
+    const ai = await aiAnswer([{ role: "system", content: system }, { role: "user", content: text }]);
+    await sendText(phone, ai);
+
+  } catch (e) {
+    console.error("handleIncoming error:", e?.response?.data || e);
+  }
+}
+
+async function sendText(to, body) {
+  try {
+    await axios.post(
+      `${META_BASE}/${process.env.META_PHONE_NUMBER_ID}/messages`,
+      { messaging_product: "whatsapp", to, text: { body } },
+      { headers: { Authorization: `Bearer ${WA_TOKEN}` } }
+    );
+  } catch (e) {
+    console.error("sendText error:", e?.response?.data || e.message);
+  }
+}
+
+async function broadcastToStaff(body) {
+  const unique = Array.from(new Set(STAFF_WHITELIST));
+  await Promise.all(unique.map(p => p && sendText(p, body)));
+}
