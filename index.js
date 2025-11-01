@@ -1,15 +1,10 @@
 import express from "express";
 import dotenv from "dotenv";
-import { router } from "./router.js";
-
+import { router } from "./router.js"; // путь именно "./router.js"
 dotenv.config();
+
 const app = express();
-app.use(express.json({ limit: "2mb" }));
-
-app.get("/", (req, res) => {
-  res.status(200).send("Assistant Doner Home: OK");
-});
-
+app.use(express.json());
 app.use("/webhook", router);
 
 const PORT = process.env.PORT || 3000;
