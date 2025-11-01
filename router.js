@@ -3,7 +3,7 @@ import { handleIncoming } from "./whatsapp.js";
 
 export const router = express.Router();
 
-// --- Проверка вебхука от Meta ---
+// --- Проверка webhook от Meta ---
 router.get("/", (req, res) => {
   try {
     const verifyToken = process.env.META_VERIFY_TOKEN;
@@ -23,5 +23,5 @@ router.get("/", (req, res) => {
   }
 });
 
-// --- Обработка входящих сообщений WhatsApp ---
+// --- Основная обработка входящих сообщений WhatsApp ---
 router.post("/", handleIncoming);
