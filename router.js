@@ -1,21 +1,27 @@
 import express from "express";
+import { handleIncoming } from "./whatsapp.js";
+
 export const router = express.Router();
 
-// --- Проверка webhook от Meta ---
+// --- Проверка вебхука от Meta ---
 router.get("/", (req, res) => {
-  const verifyToken = process.env.META_VERIFY_TOKEN;
-  const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
+  try {
+    const verifyToken = process.env.META_VERIFY_TOKEN;
+    const token = req.query["hub.verify_token"];
+    const challenge = req.query["hub.challenge"];
 
-  if (token === verifyToken) {
-    console.log("✅ Webhook verification passed");
-    res.status(200).send(challenge);
-  } else {
-    console.warn("❌ Webhook verification failed");
-    res.sendStatus(403);
+    if (token === verifyToken) {
+      console.log("✅ Webhook verification passed");
+      res.status(200).send(challenge);
+    } else {
+      console.warn("❌ Webhook verification failed");
+      res.sendStatus(403);
+    }
+  } catch (err) {
+    console.error("Webhook verification error:", err);
+    res.sendStatus(500);
   }
 });
 
-// --- Обработка сообщений WhatsApp ---
-import { handleIncoming } from "./whatsapp.js";
+// --- Обработка входящих сообщений WhatsApp ---
 router.post("/", handleIncoming);
