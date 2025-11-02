@@ -1,6 +1,8 @@
 import axios from "axios";
 import { aiAnswer } from "./ai.js";
 import { buildReplyForRole } from "./templates.js";
+import { writeToSheet } from "./google.js";
+
 
 const META_BASE = "https://graph.facebook.com/v20.0";
 
