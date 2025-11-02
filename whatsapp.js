@@ -3,24 +3,27 @@ import { aiAnswer } from "./ai.js";
 import { buildReplyForRole } from "./templates.js";
 import { writeToSheet } from "./google.js";
 
+const META_BASE = "https://graph.facebook.com/v22.0";
 
-const META_BASE = "https://graph.facebook.com/v20.0";
-
-// Environment
+// === ENVIRONMENT VARIABLES ===
 const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN;
 const WA_TOKEN = process.env.META_WA_TOKEN;
 const PHONE_NUMBER_ID = process.env.META_PHONE_NUMBER_ID;
 
-// Business logic: roles
-const ADMIN_PHONE = (process.env.ADMIN_PHONE || "").replace(/\D/g, ""); // digits only
-const STAFF_WHITELIST = (process.env.STAFF_PHONES || "").split(",").map(s => s.replace(/\D/g, "")).filter(Boolean);
+// === ROLES & LOGIC ===
+const ADMIN_PHONE = (process.env.ADMIN_PHONE || "").replace(/\D/g, ""); // только цифры
+const STAFF_WHITELIST = (process.env.STAFF_PHONES || "")
+  .split(",")
+  .map(s => s.replace(/\D/g, ""))
+  .filter(Boolean);
 
-// Simple in-memory store (for demo). Replace with DB/Sheets later.
+// === SIMPLE MEMORY STORE ===
 const store = {
-  shifts: {}, // {phone: {status: "on|off", startAt, endAt}}
-  reports: [] // {phone, ts, text}
+  shifts: {},  // {phone: {status: "on|off", startAt, endAt}}
+  reports: []  // {phone, ts, text}
 };
 
+// === VERIFY WEBHOOK ===
 export function verifyWebhook(req, res) {
   try {
     const verifyToken = req.query["hub.verify_token"];
@@ -32,6 +35,7 @@ export function verifyWebhook(req, res) {
   }
 }
 
+// === PARSE INCOMING MESSAGE ===
 function senderInfo(body) {
   const change = body?.entry?.[0]?.changes?.[0]?.value;
   const msg = change?.messages?.[0];
@@ -41,8 +45,9 @@ function senderInfo(body) {
   return { msg, phone, name, text };
 }
 
+// === HANDLE INCOMING MESSAGES ===
 export async function handleIncoming(req, res) {
-  res.sendStatus(200); // ACK early
+  res.sendStatus(200); // сразу подтверждаем webhook
   try {
     const { msg, phone, name, text } = senderInfo(req.body);
     if (!msg || !phone) return;
@@ -55,15 +60,16 @@ export async function handleIncoming(req, res) {
       return;
     }
 
-    // Command parsing
     const t = text.trim().toLowerCase();
 
+    // === STAFF COMMANDS ===
     if (role === "staff") {
       if (/(смена старт|приш[её]л|начал)/.test(t)) {
         store.shifts[phone] = { status: "on", startAt: new Date().toISOString() };
         await sendText(phone, "✅ Смена начата. Хорошей работы!");
         return;
       }
+
       if (/(смена стоп|уш[её]л|закончил|конец смены)/.test(t)) {
         const rec = store.shifts[phone] || {};
         rec.status = "off";
@@ -72,19 +78,23 @@ export async function handleIncoming(req, res) {
         await sendText(phone, "🕘 Смена завершена. Не забудь отправить отчёт: 'отчёт: ...' и 'питание: ...'");
         return;
       }
+
       if (/^отч[её]т[:\-]/.test(t)) {
-  const timestamp = new Date().toLocaleString("ru-RU");
-  const row = { phone, text, timestamp };
-  await writeToSheet("Отчёты", row);
-  await sendText(phone, "📝 Отчёт сохранён и записан в таблицу. Спасибо!");
-  return;
-}
+        const timestamp = new Date().toLocaleString("ru-RU");
+        const row = { phone, text, timestamp };
+        await writeToSheet("Отчёты", row);
+        await sendText(phone, "📝 Отчёт сохранён и записан в таблицу. Спасибо!");
+        return;
+      }
 
       if (/^питание[:\-]/.test(t)) {
-        store.reports.push({ phone, ts: new Date().toISOString(), text });
+        const timestamp = new Date().toLocaleString("ru-RU");
+        const row = { phone, text, timestamp };
+        await writeToSheet("Питание", row);
         await sendText(phone, "🍽️ Питание записано. Спасибо!");
         return;
       }
+
       if (/статус/.test(t)) {
         const rec = store.shifts[phone] || {};
         await sendText(phone, `📊 Статус: ${rec.status || "не на смене"}`);
@@ -92,6 +102,7 @@ export async function handleIncoming(req, res) {
       }
     }
 
+    // === MANAGER COMMANDS ===
     if (role === "manager") {
       if (/^рассылка[:\-]/.test(t)) {
         const payload = text.split(/[:\-]/).slice(1).join(":").trim();
@@ -99,11 +110,13 @@ export async function handleIncoming(req, res) {
         await sendText(phone, "📣 Рассылка отправлена всем сотрудникам из списка.");
         return;
       }
+
       if (/^статистика/.test(t)) {
         const on = Object.values(store.shifts).filter(s => s.status === "on").length;
         await sendText(phone, `📈 На смене сейчас: ${on}. Всего отчётов за сегодня: ${store.reports.length}.`);
         return;
       }
+
       if (/^добавить[:\-]/.test(t)) {
         const newPhone = text.match(/\d{7,}/)?.[0];
         if (newPhone && !STAFF_WHITELIST.includes(newPhone)) {
@@ -116,7 +129,7 @@ export async function handleIncoming(req, res) {
       }
     }
 
-    // Fallback to AI with role-aware system prompt
+    // === AI FALLBACK ===
     const system = buildReplyForRole(role);
     const ai = await aiAnswer([{ role: "system", content: system }, { role: "user", content: text }]);
     await sendText(phone, ai);
@@ -126,10 +139,11 @@ export async function handleIncoming(req, res) {
   }
 }
 
+// === SEND MESSAGE TO WHATSAPP ===
 async function sendText(to, body) {
   try {
     await axios.post(
-      https://graph.facebook.com/v22.0/${process.env.META_PHONE_NUMBER_ID}/messages,
+      `https://graph.facebook.com/v22.0/${process.env.META_PHONE_NUMBER_ID}/messages`,
       {
         messaging_product: "whatsapp",
         to,
@@ -137,7 +151,7 @@ async function sendText(to, body) {
       },
       {
         headers: {
-          Authorization: Bearer ${WA_TOKEN},
+          Authorization: `Bearer ${WA_TOKEN}`,
           "Content-Type": "application/json"
         }
       }
@@ -148,6 +162,7 @@ async function sendText(to, body) {
   }
 }
 
+// === MASS BROADCAST ===
 async function broadcastToStaff(body) {
   const unique = Array.from(new Set(STAFF_WHITELIST));
   await Promise.all(unique.map(p => p && sendText(p, body)));
