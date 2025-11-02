@@ -2,6 +2,7 @@ import axios from "axios";
 import { aiAnswer } from "./ai.js";
 import { buildReplyForRole } from "./templates.js";
 import { writeToSheet } from "./google.js";
+import { aiAnswer } from "./ai.js"
 
 const META_BASE = "https://graph.facebook.com/v22.0";
 
