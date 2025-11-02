@@ -153,7 +153,7 @@ export async function handleIncoming(req, res) {
 async function sendText(to, body) {
   try {
     await axios.post(
-      https://graph.facebook.com/v22.0/${process.env.META_PHONE_NUMBER_ID}/messages,
+     ` https://graph.facebook.com/v22.0/${process.env.META_PHONE_NUMBER_ID}/messages,`
       {
         messaging_product: "whatsapp",
         to,
