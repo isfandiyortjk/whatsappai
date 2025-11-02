@@ -158,14 +158,14 @@ async function sendText(to, body) {
       }
     );
 
-    console.log(`✅ Сообщение отправлено на ${to}: ${body}`);
+    console.log(`✅ Сообщение отправлено ${to}: ${body}`);
   } catch (e) {
     console.error("❌ sendText error:", e?.response?.data || e.message);
   }
 }
-
 // === MASS BROADCAST ===
 async function broadcastToStaff(body) {
   const unique = Array.from(new Set(STAFF_WHITELIST));
   await Promise.all(unique.map(p => p && sendText(p, body)));
 }
+
