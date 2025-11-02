@@ -143,7 +143,7 @@ export async function handleIncoming(req, res) {
 async function sendText(to, body) {
   try {
     await axios.post(
-      `https://graph.facebook.com/v22.0/${process.env.META_PHONE_NUMBER_ID}/messages`,
+      https://graph.facebook.com/v22.0/${process.env.META_PHONE_NUMBER_ID}/messages,
       {
         messaging_product: "whatsapp",
         to,
@@ -151,12 +151,13 @@ async function sendText(to, body) {
       },
       {
         headers: {
-          Authorization: `Bearer ${WA_TOKEN}`,
+          Authorization: Bearer ${WA_TOKEN},
           "Content-Type": "application/json"
         }
       }
     );
-    console.log(`✅ Сообщение отправлено ${to}: ${body}`);
+
+    console.log(`✅ Сообщение отправлено на ${to}: ${body}`);
   } catch (e) {
     console.error("❌ sendText error:", e?.response?.data || e.message);
   }
