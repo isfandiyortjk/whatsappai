@@ -1,17 +1,21 @@
-import axios from "axios";
+import OpenAI from "openai";
 
-const OPENAI_KEY = process.env.OPENAI_KEY;
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
+// Простая функция общения с ИИ
 export async function aiAnswer(messages) {
   try {
-    const r = await axios.post(
-      "https://api.openai.com/v1/chat/completions",
-      { model: "gpt-5", messages, temperature: 0.2 },
-      { headers: { Authorization: `Bearer ${OPENAI_KEY}` } }
-    );
-    return r.data.choices[0].message.content;
+    const completion = await client.chat.completions.create({
+      model: "gpt-4o-mini", // можно заменить на gpt-5
+      messages,
+      temperature: 0.8,
+    });
+
+    return completion.choices[0].message.content;
   } catch (e) {
-    console.error("OpenAI error:", e?.response?.data || e.message);
-    return "Извините, временная ошибка ИИ. Попробуйте ещё раз.";
+    console.error("❌ Ошибка OpenAI:", e.response?.data || e.message);
+    return "Извини, сейчас я не могу ответить. Попробуй чуть позже.";
   }
 }
