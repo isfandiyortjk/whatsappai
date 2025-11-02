@@ -73,10 +73,13 @@ export async function handleIncoming(req, res) {
         return;
       }
       if (/^отч[её]т[:\-]/.test(t)) {
-        store.reports.push({ phone, ts: new Date().toISOString(), text });
-        await sendText(phone, "📝 Отчёт сохранён. Спасибо!");
-        return;
-      }
+  const timestamp = new Date().toLocaleString("ru-RU");
+  const row = { phone, text, timestamp };
+  await writeToSheet("Отчёты", row);
+  await sendText(phone, "📝 Отчёт сохранён и записан в таблицу. Спасибо!");
+  return;
+}
+
       if (/^питание[:\-]/.test(t)) {
         store.reports.push({ phone, ts: new Date().toISOString(), text });
         await sendText(phone, "🍽️ Питание записано. Спасибо!");
