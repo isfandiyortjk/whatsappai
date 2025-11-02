@@ -63,21 +63,25 @@ export async function handleIncoming(req, res) {
     const t = text.trim().toLowerCase();
 
     // === STAFF COMMANDS ===
-    if (role === "staff") {
       if (/(смена старт|приш[её]л|начал)/.test(t)) {
-        store.shifts[phone] = { status: "on", startAt: new Date().toISOString() };
-        await sendText(phone, "✅ Смена начата. Хорошей работы!");
+        const startTime = new Date().toLocaleString("ru-RU");
+        store.shifts[phone] = { status: "on", startAt: startTime };
+        await writeToSheet("Смены", { phone, status: "начал смену", timestamp: startTime });
+        await sendText(phone, "✅ Смена начата и записана в таблицу. Хорошей работы!");
         return;
-      }
+    }
 
       if (/(смена стоп|уш[её]л|закончил|конец смены)/.test(t)) {
+        const endTime = new Date().toLocaleString("ru-RU");
         const rec = store.shifts[phone] || {};
         rec.status = "off";
-        rec.endAt = new Date().toISOString();
+        rec.endAt = endTime;
         store.shifts[phone] = rec;
-        await sendText(phone, "🕘 Смена завершена. Не забудь отправить отчёт: 'отчёт: ...' и 'питание: ...'");
+      
+        await writeToSheet("Смены", { phone, status: "закончил смену", timestamp: endTime });
+        await sendText(phone, "🕘 Смена завершена и записана в таблицу. Не забудь отчёт и питание.");
         return;
-      }
+    }
 
       if (/^отч[её]т[:\-]/.test(t)) {
         const timestamp = new Date().toLocaleString("ru-RU");
@@ -88,10 +92,9 @@ export async function handleIncoming(req, res) {
       }
 
       if (/^питание[:\-]/.test(t)) {
-        const timestamp = new Date().toLocaleString("ru-RU");
-        const row = { phone, text, timestamp };
-        await writeToSheet("Питание", row);
-        await sendText(phone, "🍽️ Питание записано. Спасибо!");
+        const time = new Date().toLocaleString("ru-RU");
+        await writeToSheet("Питание", { phone, text, timestamp: time });
+        await sendText(phone, "🍽 Информация о питании сохранена в таблицу. Спасибо!");
         return;
       }
 
@@ -125,6 +128,12 @@ export async function handleIncoming(req, res) {
         } else {
           await sendText(phone, "⚠️ Укажи номер вида: 'добавить: +491234567890'");
         }
+        return;
+      }
+      if (/^отч[её]т[:\-]/.test(t)) {
+        const time = new Date().toLocaleString("ru-RU");
+        await writeToSheet("Отчёты", { phone, text, timestamp: time });
+        await sendText(phone, "📝 Отчёт сохранён и добавлен в таблицу.");
         return;
       }
     }
