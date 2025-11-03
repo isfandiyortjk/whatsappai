@@ -44,6 +44,8 @@ WhatsApp-бот на русском с двумя ролями:
 ## ⚠️ Примечания
 - Хранилище сейчас в памяти (демо). Для продакшена подключите БД или Google Sheets.
 - Токен Meta из API Setup действует ~23 часа. Для постоянного токена создайте System User и выдайте права.
+- Добавьте телефоны администратора и сотрудников в **Allowed recipients** (Meta Developers → WhatsApp → API Setup → **Add phone number**), иначе Meta вернёт ошибку `(#131030) Recipient phone number not in allowed list`.
+- Попросите каждого сотрудника сначала написать боту, чтобы открыть 24-часовой диалог; без этого Meta заблокирует исходящие сообщения.
 - Если `npm install` даёт сетевые ошибки, можно временно:
   ```
   npm config set registry https://registry.npmmirror.com
