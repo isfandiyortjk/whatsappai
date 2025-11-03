@@ -19,6 +19,12 @@ const store = {
   reports: [],
 };
 
+const BLOCK_TTL_MS = 15 * 60 * 1000;
+
+const blockedRecipients = new Map();
+const adminNotifiedFor = new Map();
+const unknownStaffAlerts = new Set();
+
 function senderInfo(body) {
   const change = body?.entry?.[0]?.changes?.[0]?.value;
   const msg = change?.messages?.[0];
@@ -38,6 +44,10 @@ export async function handleIncoming(req, res) {
     const isKnownStaff = STAFF_WHITELIST.includes(phone) || role === "manager";
 
     if (!isKnownStaff) {
+      console.warn(
+        `🚫 Получено сообщение от номера вне списка сотрудников: ${displayPhone(phone)}.`
+      );
+      await notifyAdminOfUnknownStaff(phone, text);
       await sendText(
         phone,
         "❗️Доступ ограничен. Сообщите свой номер руководителю для добавления в список сотрудников."
@@ -151,7 +161,23 @@ async function dispatchMessage(to, body) {
   );
 }
 
-async function sendText(to, body, { skipNotifyAdmin } = {}) {
+async function sendText(to, body, options = {}) {
+  const { skipNotifyAdmin, allowBlocked } = options;
+
+  if (!allowBlocked && blockedRecipients.has(to)) {
+    const info = blockedRecipients.get(to);
+    if (Date.now() - info.timestamp > BLOCK_TTL_MS) {
+      blockedRecipients.delete(to);
+    } else {
+    console.warn(
+      `⏭️ Пропуск отправки на ${displayPhone(to)}: Meta вернул ошибку #${info.code} ${new Date(
+        info.timestamp
+      ).toLocaleString("ru-RU")}.`
+    );
+    return;
+    }
+  }
+
   try {
     await dispatchMessage(to, body);
     console.log(`✅ Отправлено ${to}: ${body}`);
@@ -160,6 +186,9 @@ async function sendText(to, body, { skipNotifyAdmin } = {}) {
     console.error("❌ sendText error:", data);
 
     const metaCode = data?.error?.code;
+    if (metaCode === 131030) {
+      blockedRecipients.set(to, { code: metaCode, timestamp: Date.now() });
+    }
     const shouldNotifyAdmin =
       metaCode === 131030 &&
       !skipNotifyAdmin &&
@@ -174,7 +203,15 @@ async function sendText(to, body, { skipNotifyAdmin } = {}) {
         "и попросите сотрудника написать боту, чтобы открыть 24-часовой диалог.";
 
       try {
-        await sendText(ADMIN_PHONE, humanMessage, { skipNotifyAdmin: true });
+        const lastNotified = adminNotifiedFor.get(to) || 0;
+        if (Date.now() - lastNotified < BLOCK_TTL_MS) {
+          return;
+        }
+        adminNotifiedFor.set(to, Date.now());
+        await sendText(ADMIN_PHONE, humanMessage, {
+          skipNotifyAdmin: true,
+          allowBlocked: true,
+        });
       } catch (notifyError) {
         console.error(
           "❌ Не удалось уведомить администратора о блокировке номера:",
@@ -188,4 +225,27 @@ async function sendText(to, body, { skipNotifyAdmin } = {}) {
 async function broadcastToStaff(body) {
   const unique = Array.from(new Set(STAFF_WHITELIST));
   await Promise.all(unique.map(p => p && sendText(p, body)));
+}
+
+async function notifyAdminOfUnknownStaff(phone, text) {
+  if (!ADMIN_PHONE || unknownStaffAlerts.has(phone)) {
+    return;
+  }
+
+  const preview = text.length > 120 ? `${text.slice(0, 117)}...` : text;
+  const body =
+    `⚠️ Новый номер ${displayPhone(phone)} написал боту, но не найден в STAFF_PHONES. ` +
+    `Проверьте, добавлен ли он в разрешённый список Meta и обновите переменную окружения.\n` +
+    `Сообщение: "${preview || "(пусто)"}"`;
+
+  try {
+    unknownStaffAlerts.add(phone);
+    await sendText(ADMIN_PHONE, body, { skipNotifyAdmin: true, allowBlocked: true });
+  } catch (error) {
+    console.error(
+      "❌ Не удалось уведомить администратора о новом номере:",
+      error?.response?.data || error.message
+    );
+    unknownStaffAlerts.delete(phone);
+  }
 }
