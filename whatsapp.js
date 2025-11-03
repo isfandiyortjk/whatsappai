@@ -1,7 +1,14 @@
+// index.js
+
 import axios from "axios";
+import express from "express";
+import bodyParser from "body-parser";
 import { aiAnswer } from "./ai.js";
 import { buildReplyForRole } from "./templates.js";
 import { writeToSheet } from "./google.js";
+
+const app = express();
+app.use(bodyParser.json());
 
 const META_BASE = "https://graph.facebook.com/v22.0";
 
@@ -20,20 +27,28 @@ const STAFF_WHITELIST = (process.env.STAFF_PHONES || "")
 // === SIMPLE MEMORY STORE ===
 const store = {
   shifts: {}, // {phone: {status: "on|off", startAt, endAt}}
-  reports: [] // {phone, ts, text}
+  reports: [], // {phone, ts, text}
 };
 
 // === VERIFY WEBHOOK ===
-export function verifyWebhook(req, res) {
+app.get("/webhook", (req, res) => {
   try {
     const verifyToken = req.query["hub.verify_token"];
     const challenge = req.query["hub.challenge"];
-    if (verifyToken === VERIFY_TOKEN) return res.status(200).send(challenge);
-    return res.sendStatus(403);
-  } catch {
+    const mode = req.query["hub.mode"];
+
+    if (mode === "subscribe" && verifyToken === VERIFY_TOKEN) {
+      console.log("✅ Webhook verified successfully");
+      return res.status(200).send(challenge);
+    } else {
+      console.warn("❌ Verification failed");
+      return res.sendStatus(403);
+    }
+  } catch (err) {
+    console.error("Webhook verification error:", err);
     return res.sendStatus(500);
   }
-}
+});
 
 // === PARSE INCOMING MESSAGE ===
 function senderInfo(body) {
@@ -45,8 +60,8 @@ function senderInfo(body) {
   return { msg, phone, name, text };
 }
 
-// === HANDLE INCOMING MESSAGES ===
-export async function handleIncoming(req, res) {
+// === MAIN MESSAGE HANDLER ===
+app.post("/webhook", async (req, res) => {
   res.sendStatus(200);
   try {
     const { msg, phone, name, text } = senderInfo(req.body);
@@ -56,7 +71,10 @@ export async function handleIncoming(req, res) {
     const isKnownStaff = STAFF_WHITELIST.includes(phone) || role === "manager";
 
     if (!isKnownStaff) {
-      await sendText(phone, "❗️Доступ ограничен. Сообщите номер руководителю для добавления в список сотрудников.");
+      await sendText(
+        phone,
+        "❗️Доступ ограничен. Сообщите свой номер руководителю для добавления в список сотрудников."
+      );
       return;
     }
 
@@ -93,7 +111,7 @@ export async function handleIncoming(req, res) {
     if (/^питание[:\-]/.test(t)) {
       const time = new Date().toLocaleString("ru-RU");
       await writeToSheet("Питание", { phone, text, timestamp: time });
-      await sendText(phone, "🍽 Информация о питании сохранена в таблицу. Спасибо!");
+      await sendText(phone, "🍽 Информация о питании сохранена. Спасибо!");
       return;
     }
 
@@ -108,13 +126,16 @@ export async function handleIncoming(req, res) {
       if (/^рассылка[:\-]/.test(t)) {
         const payload = text.split(/[:\-]/).slice(1).join(":").trim();
         await broadcastToStaff(payload || "Сообщение от руководителя.");
-        await sendText(phone, "📣 Рассылка отправлена всем сотрудникам из списка.");
+        await sendText(phone, "📣 Рассылка отправлена всем сотрудникам.");
         return;
       }
 
       if (/^статистика/.test(t)) {
         const on = Object.values(store.shifts).filter(s => s.status === "on").length;
-        await sendText(phone, `📈 На смене сейчас: ${on}. Всего отчётов за сегодня: ${store.reports.length}.`);
+        await sendText(
+          phone,
+          `📈 На смене сейчас: ${on}. Всего отчётов за сегодня: ${store.reports.length}.`
+        );
         return;
       }
 
@@ -132,19 +153,22 @@ export async function handleIncoming(req, res) {
 
     // === AI FALLBACK ===
     const system = buildReplyForRole(role);
-    const ai = await aiAnswer([{ role: "system", content: system }, { role: "user", content: text }]);
+    const ai = await aiAnswer([
+      { role: "system", content: system },
+      { role: "user", content: text },
+    ]);
     await sendText(phone, ai);
-
   } catch (e) {
     console.error("handleIncoming error:", e?.response?.data || e);
   }
-}
+});
 
 // === SEND MESSAGE TO WHATSAPP ===
 async function sendText(to, body) {
   try {
+    const url = `${META_BASE}/${PHONE_NUMBER_ID}/messages`;
     await axios.post(
-      `https://graph.facebook.com/v22.0/${process.env.META_PHONE_NUMBER_ID}/messages`,
+      url,
       {
         messaging_product: "whatsapp",
         to,
@@ -157,15 +181,20 @@ async function sendText(to, body) {
         },
       }
     );
-
-    console.log(`✅ Сообщение отправлено ${to}: ${body}`);
+    console.log(`✅ Отправлено ${to}: ${body}`);
   } catch (e) {
     console.error("❌ sendText error:", e?.response?.data || e.message);
   }
 }
+
 // === MASS BROADCAST ===
 async function broadcastToStaff(body) {
   const unique = Array.from(new Set(STAFF_WHITELIST));
   await Promise.all(unique.map(p => p && sendText(p, body)));
 }
+
+// === SERVER START ===
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`🚀 Assistant Doner Home running on port ${PORT}`));
+
 
