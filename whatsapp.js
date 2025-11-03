@@ -9,10 +9,17 @@ const WA_TOKEN = process.env.META_WA_TOKEN;
 const PHONE_NUMBER_ID = process.env.META_PHONE_NUMBER_ID;
 
 const ADMIN_PHONE = (process.env.ADMIN_PHONE || "").replace(/\D/g, "");
-const STAFF_WHITELIST = (process.env.STAFF_PHONES || "")
-  .split(",")
-  .map(s => s.replace(/\D/g, ""))
-  .filter(Boolean);
+const DEFAULT_STAFF = ["79133318413"]; // +7 913 331-84-13
+const STAFF_WHITELIST = Array.from(
+  new Set(
+    DEFAULT_STAFF.concat(
+      (process.env.STAFF_PHONES || "")
+        .split(",")
+        .map(s => s.replace(/\D/g, ""))
+        .filter(Boolean)
+    )
+  )
+);
 
 const store = {
   shifts: {},
