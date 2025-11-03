@@ -1,56 +1,24 @@
-// index.js
-
 import axios from "axios";
-import express from "express";
-import bodyParser from "body-parser";
 import { aiAnswer } from "./ai.js";
 import { buildReplyForRole } from "./templates.js";
 import { writeToSheet } from "./google.js";
 
-const app = express();
-app.use(bodyParser.json());
-
 const META_BASE = "https://graph.facebook.com/v22.0";
 
-// === ENVIRONMENT VARIABLES ===
-const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN;
 const WA_TOKEN = process.env.META_WA_TOKEN;
 const PHONE_NUMBER_ID = process.env.META_PHONE_NUMBER_ID;
 
-// === ROLES & LOGIC ===
 const ADMIN_PHONE = (process.env.ADMIN_PHONE || "").replace(/\D/g, "");
 const STAFF_WHITELIST = (process.env.STAFF_PHONES || "")
   .split(",")
   .map(s => s.replace(/\D/g, ""))
   .filter(Boolean);
 
-// === SIMPLE MEMORY STORE ===
 const store = {
-  shifts: {}, // {phone: {status: "on|off", startAt, endAt}}
-  reports: [], // {phone, ts, text}
+  shifts: {},
+  reports: [],
 };
 
-// === VERIFY WEBHOOK ===
-app.get("/webhook", (req, res) => {
-  try {
-    const verifyToken = req.query["hub.verify_token"];
-    const challenge = req.query["hub.challenge"];
-    const mode = req.query["hub.mode"];
-
-    if (mode === "subscribe" && verifyToken === VERIFY_TOKEN) {
-      console.log("✅ Webhook verified successfully");
-      return res.status(200).send(challenge);
-    } else {
-      console.warn("❌ Verification failed");
-      return res.sendStatus(403);
-    }
-  } catch (err) {
-    console.error("Webhook verification error:", err);
-    return res.sendStatus(500);
-  }
-});
-
-// === PARSE INCOMING MESSAGE ===
 function senderInfo(body) {
   const change = body?.entry?.[0]?.changes?.[0]?.value;
   const msg = change?.messages?.[0];
@@ -60,11 +28,10 @@ function senderInfo(body) {
   return { msg, phone, name, text };
 }
 
-// === MAIN MESSAGE HANDLER ===
-app.post("/webhook", async (req, res) => {
+export async function handleIncoming(req, res) {
   res.sendStatus(200);
   try {
-    const { msg, phone, name, text } = senderInfo(req.body);
+    const { msg, phone, text } = senderInfo(req.body);
     if (!msg || !phone) return;
 
     const role = phone === ADMIN_PHONE ? "manager" : "staff";
@@ -80,7 +47,6 @@ app.post("/webhook", async (req, res) => {
 
     const t = text.trim().toLowerCase();
 
-    // === STAFF COMMANDS ===
     if (/(смена старт|приш[её]л|начал)/.test(t)) {
       const startTime = new Date().toLocaleString("ru-RU");
       store.shifts[phone] = { status: "on", startAt: startTime };
@@ -103,6 +69,7 @@ app.post("/webhook", async (req, res) => {
 
     if (/^отч[её]т[:\-]/.test(t)) {
       const timestamp = new Date().toLocaleString("ru-RU");
+      store.reports.push({ phone, text, timestamp });
       await writeToSheet("Отчёты", { phone, text, timestamp });
       await sendText(phone, "📝 Отчёт сохранён и записан в таблицу. Спасибо!");
       return;
@@ -121,7 +88,6 @@ app.post("/webhook", async (req, res) => {
       return;
     }
 
-    // === MANAGER COMMANDS ===
     if (role === "manager") {
       if (/^рассылка[:\-]/.test(t)) {
         const payload = text.split(/[:\-]/).slice(1).join(":").trim();
@@ -151,7 +117,6 @@ app.post("/webhook", async (req, res) => {
       }
     }
 
-    // === AI FALLBACK ===
     const system = buildReplyForRole(role);
     const ai = await aiAnswer([
       { role: "system", content: system },
@@ -161,9 +126,8 @@ app.post("/webhook", async (req, res) => {
   } catch (e) {
     console.error("handleIncoming error:", e?.response?.data || e);
   }
-});
+}
 
-// === SEND MESSAGE TO WHATSAPP ===
 async function sendText(to, body) {
   try {
     const url = `${META_BASE}/${PHONE_NUMBER_ID}/messages`;
@@ -187,14 +151,7 @@ async function sendText(to, body) {
   }
 }
 
-// === MASS BROADCAST ===
 async function broadcastToStaff(body) {
   const unique = Array.from(new Set(STAFF_WHITELIST));
   await Promise.all(unique.map(p => p && sendText(p, body)));
 }
-
-// === SERVER START ===
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`🚀 Assistant Doner Home running on port ${PORT}`));
-
-
