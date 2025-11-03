@@ -1,7 +1,15 @@
 import OpenAI from "openai";
 
+const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY;
+
+if (!apiKey) {
+  console.warn(
+    "⚠️ OPENAI_API_KEY или OPENAI_KEY не заданы. Ответы ИИ будут недоступны."
+  );
+}
+
 const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey,
 });
 
 // Простая функция общения с ИИ

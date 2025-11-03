@@ -1,5 +1,5 @@
 # OpenAI
-OPENAI_KEY=sk-proj-XXXX
+OPENAI_API_KEY=sk-proj-XXXX
 
 # Meta / WhatsApp
 META_VERIFY_TOKEN=super_secret_webhook

@@ -11,7 +11,7 @@ WhatsApp-бот на русском с двумя ролями:
    - Build Command: `npm install`
    - Start Command: `npm start`
 4) Добавь переменные окружения:
-   - `OPENAI_KEY` — ключ OpenAI
+   - `OPENAI_API_KEY` — ключ OpenAI (можно также `OPENAI_KEY`)
    - `META_VERIFY_TOKEN` — придуманный токен проверки
    - `META_WA_TOKEN` — токен Meta (временно: из API Setup)
    - `META_PHONE_NUMBER_ID` — ID номера из API Setup
@@ -45,6 +45,7 @@ WhatsApp-бот на русском с двумя ролями:
 - Хранилище сейчас в памяти (демо). Для продакшена подключите БД или Google Sheets.
 - Токен Meta из API Setup действует ~23 часа. Для постоянного токена создайте System User и выдайте права.
 - Добавьте телефоны администратора и сотрудников в **Allowed recipients** (Meta Developers → WhatsApp → API Setup → **Add phone number**), иначе Meta вернёт ошибку `(#131030) Recipient phone number not in allowed list`.
+- Если ошибка `(#131030)` появилась, откройте Meta Developers → App → WhatsApp → API Setup → Allowed recipients и нажмите **Add phone number**. Введите номер сотрудника в международном формате и подтвердите. Затем попросите сотрудника написать вашему боту в WhatsApp, чтобы активировать 24-часовое окно диалога и повторите отправку сообщения.
 - Попросите каждого сотрудника сначала написать боту, чтобы открыть 24-часовой диалог; без этого Meta заблокирует исходящие сообщения.
 - Если `npm install` даёт сетевые ошибки, можно временно:
   ```

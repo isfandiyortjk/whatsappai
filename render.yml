@@ -7,7 +7,7 @@ services:
     startCommand: "npm start"
     autoDeploy: true
     envVars:
-      - key: OPENAI_KEY
+      - key: OPENAI_API_KEY
         sync: false
       - key: META_VERIFY_TOKEN
         sync: false
