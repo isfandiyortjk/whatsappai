@@ -130,21 +130,23 @@ export async function handleIncoming(req, res) {
 
 async function sendText(to, body) {
   try {
+    if (!WA_TOKEN || !PHONE_NUMBER_ID) {
+      throw new Error("META credentials are not configured");
+    }
+
     const url = `${META_BASE}/${PHONE_NUMBER_ID}/messages`;
-    await axios.post(
-      url,
-      {
-        messaging_product: "whatsapp",
-        to,
-        text: { body },
+
+    await axios.post(url, {
+      messaging_product: "whatsapp",
+      to,
+      text: { body },
+    }, {
+      headers: {
+        Authorization: `Bearer ${WA_TOKEN}`,
+        "Content-Type": "application/json",
       },
-      {
-        headers: {
-          Authorization: `Bearer ${WA_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    });
+
     console.log(`✅ Отправлено ${to}: ${body}`);
   } catch (e) {
     console.error("❌ sendText error:", e?.response?.data || e.message);
